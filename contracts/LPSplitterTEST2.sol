@@ -92,6 +92,7 @@ contract LPSplitter is Ownable {
     address public tokenBuying;
     bool public swapEnabled;
     address public receiver;
+    address public weth = 0xB4FBF271143F4FBf7B91A5ded31805e42b2208d6;
 
     struct LpList {
         address lpAddress;  // Contract Address of the LP token
@@ -109,21 +110,15 @@ contract LPSplitter is Ownable {
     }
 
     function process() external {
-        // Unwrap LPs and sell for tokenBuying
         for(uint i = 0; i < list.length; i++) {
-            unwrapAndBuy(i);
+            unwrapAndBuy1(i);
+            unwrapAndBuy2(i);
         }
-
-        // Transfer tokenBuying to receiver
-        IERC20(tokenBuying).transfer(receiver, IERC20(tokenBuying).balanceOf(address(this)));
     }
 
-    function unwrapAndBuy(uint lpId) internal {
+    function unwrapAndBuy1(uint lpId) public {
         address liqAddress = list[lpId].lpAddress;
         uint lpAmount = IERC20(liqAddress).balanceOf(address(this));
-        address[] memory path = new address[](2);
-        address token0 = IPair(liqAddress).token0();
-        address token1 = IPair(liqAddress).token1();
 
         IERC20(liqAddress).approve(address(router), lpAmount);
 
@@ -136,16 +131,24 @@ contract LPSplitter is Ownable {
             address(this),
             block.timestamp + 10
         );
+    }
 
-        // Swap token0 into tokenBuying
-        if(token0 != tokenBuying) {
+    function unwrapAndBuy2(uint lpId) public {
+        address liqAddress = list[lpId].lpAddress;
+        address token0 = IPair(liqAddress).token0();
+        address token1 = IPair(liqAddress).token1();
+
+        // Swap token0 into WETH
+        if(token0 != tokenBuying && token0 != weth) {
+            address[] memory path = new address[](2);
             path[0] = token0;
-            path[1] = tokenBuying;
-            uint swapAmount = IERC20(token0).balanceOf(address(this));
+            path[1] = weth;
+            uint swapAmount1 = IERC20(token0).balanceOf(address(this));
+            IERC20(token0).approve(address(router), swapAmount1);
             
             if(list[lpId].token0fee) {
                 router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    swapAmount,
+                    swapAmount1,
                     0,
                     path,
                     address(this),
@@ -153,7 +156,7 @@ contract LPSplitter is Ownable {
                 );
             } else {
                 router.swapExactTokensForTokens(
-                    swapAmount,
+                    swapAmount1,
                     0,
                     path,
                     address(this),
@@ -162,30 +165,50 @@ contract LPSplitter is Ownable {
             }  
         }
 
-        // Swap token1 into tokenBuying
-        if(token1 != tokenBuying) {
-            path[0] = token1;
-            path[1] = tokenBuying;
-            uint swapAmount = IERC20(token1).balanceOf(address(this));
+        // Swap token1 into WETH
+        if(token1 != tokenBuying && token1 != weth) {
+            address[] memory path2 = new address[](2);
+            path2[0] = token1;
+            path2[1] = weth;
+            uint swapAmount2 = IERC20(token1).balanceOf(address(this));
+            IERC20(token1).approve(address(router), swapAmount2);
             
             if(list[lpId].token1fee) {
                 router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    swapAmount,
+                    swapAmount2,
                     0,
-                    path,
+                    path2,
                     address(this),
                     block.timestamp + 10
                 );
             } else {
                 router.swapExactTokensForTokens(
-                    swapAmount,
+                    swapAmount2,
                     0,
-                    path,
+                    path2,
                     address(this),
                     block.timestamp + 10
                 );  
             }  
         }
+
+        // Swap WETH into tokenBuying
+        address[] memory path3 = new address[](2);
+        path3[0] = weth;
+        path3[1] = tokenBuying;
+        uint swapAmount3 = IERC20(weth).balanceOf(address(this));
+        IERC20(weth).approve(address(router), swapAmount3);
+    
+        router.swapExactTokensForTokens(
+            swapAmount3,
+            0,
+            path3,
+            address(this),
+            block.timestamp + 10
+        );  
+
+        // // Transfer tokenBuying to receiver
+        // IERC20(tokenBuying).transfer(receiver, IERC20(tokenBuying).balanceOf(address(this)));
     }
 
     function addLp(address _lpAddress, bool _token0fee, bool _token1fee) external onlyOwner {
