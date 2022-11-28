@@ -85,13 +85,14 @@ abstract contract Ownable is Context {
     }
 }
 
-/// @title LPSplitterPoM: Splits LP fees from PoM DEX, buys back POM token and burns
-/// @author Empire Capital (Tranquil Flow)
+/// @title LPSplitterPoM: Splits LP fees from PoM DEX, buys back POMG token and burns
+/// @author Empire Capital (Splnty, Tranquil Flow)
 contract LPSplitter is Ownable {
     IRouter public router;
     address public tokenBuying;
     bool public swapEnabled;
     address public receiver;
+    address WPOM = 0xC84D8d03aA41EF941721A4D77b24bB44D7C7Ac55;
 
     struct LpList {
         address lpAddress;  // Contract Address of the LP token
@@ -101,91 +102,96 @@ contract LPSplitter is Ownable {
 
     LpList[] public list;
 
-    constructor(address _router, address _tokenBuying) {
-        router = IRouter(_router);
-        tokenBuying = _tokenBuying;
+    constructor() {
+        router = IRouter(0x5322d6eD110c2990813E8168ae882112E64370Ec );
+        tokenBuying = address(0x8BB07ad76ADdE952e83f2876c9bDeA9cc5B3a51E);
         swapEnabled = true;
-        receiver = 0x0000000000000000000000000000000000000000;
+        receiver = 0x000000000000000000000000000000000000dEaD;
     }
 
     function process() external {
         // Unwrap LPs and sell for tokenBuying
         for(uint i = 0; i < list.length; i++) {
-            unwrapAndBuy(i);
+            unwrap(i);
+            sellTokensForWPOM(i);
         }
-
-        // Transfer tokenBuying to receiver
-        IERC20(tokenBuying).transfer(receiver, IERC20(tokenBuying).balanceOf(address(this)));
+        
+        buybackAndBurn();
     }
 
-    function unwrapAndBuy(uint lpId) internal {
+    function unwrap(uint lpId) public {
         address liqAddress = list[lpId].lpAddress;
         uint lpAmount = IERC20(liqAddress).balanceOf(address(this));
-        address[] memory path = new address[](2);
+
         address token0 = IPair(liqAddress).token0();
         address token1 = IPair(liqAddress).token1();
 
-        IERC20(liqAddress).approve(address(router), lpAmount);
+        IERC20(liqAddress).approve(address(router), type(uint256).max);
 
         router.removeLiquidity(
-            address(IPair(liqAddress).token0()),
-            address(IPair(liqAddress).token1()),
+            address(token0),
+            address(token1),
             lpAmount,
             0,
             0,
             address(this),
-            block.timestamp + 10
+            block.timestamp
         );
+    }
 
-        // Swap token0 into tokenBuying
-        if(token0 != tokenBuying) {
+    function sellTokensForWPOM(uint lpId) public {
+        address liqAddress = list[lpId].lpAddress;
+        address token0 = IPair(liqAddress).token0();
+        address token1 = IPair(liqAddress).token1();
+
+        IERC20(token0).approve(address(router), type(uint256).max);
+        IERC20(token1).approve(address(router), type(uint256).max);
+        IERC20(WPOM).approve(address(router), type(uint256).max);
+
+        if(token0 != WPOM) {
+            //swap token removed into WPOM
+            address[] memory path = new address[](2);
             path[0] = token0;
-            path[1] = tokenBuying;
-            uint swapAmount = IERC20(token0).balanceOf(address(this));
-            
-            if(list[lpId].token0fee) {
-                router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    swapAmount,
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp + 10
-                );
-            } else {
-                router.swapExactTokensForTokens(
-                    swapAmount,
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp + 10
-                );  
-            }  
+            path[1] = WPOM; 
+
+            router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                IERC20(token0).balanceOf(address(this)),
+                0,
+                path,
+                address(this),
+                block.timestamp + 20
+            );
         }
 
-        // Swap token1 into tokenBuying
-        if(token1 != tokenBuying) {
-            path[0] = token1;
-            path[1] = tokenBuying;
-            uint swapAmount = IERC20(token1).balanceOf(address(this));
-            
-            if(list[lpId].token1fee) {
-                router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
-                    swapAmount,
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp + 10
-                );
-            } else {
-                router.swapExactTokensForTokens(
-                    swapAmount,
-                    0,
-                    path,
-                    address(this),
-                    block.timestamp + 10
-                );  
-            }  
+        if(token1 != WPOM) {
+            //swap token removed into WPOM
+            address[] memory path2 = new address[](2);
+            path2[0] = token1;
+            path2[1] = WPOM; 
+
+            router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+                IERC20(token1).balanceOf(address(this)),
+                0,
+                path2,
+                address(this),
+                block.timestamp + 20
+            );
         }
+    }
+
+    function buybackAndBurn() public {
+        //buyback and burn token with WPOM balance
+        address[] memory path3 = new address[](2);
+        path3[0] = WPOM;
+        path3[1] = tokenBuying;
+
+         router.swapExactTokensForTokensSupportingFeeOnTransferTokens(
+            IERC20(WPOM).balanceOf(address(this)),
+            0,
+            path3,
+            receiver,
+            block.timestamp
+        ); 
     }
 
     function addLp(address _lpAddress, bool _token0fee, bool _token1fee) external onlyOwner {
@@ -209,6 +215,15 @@ contract LPSplitter is Ownable {
         tokenBuying = _tokenBuying;
         receiver = _receiver;
         swapEnabled = _swapEnabled;
+    }
+
+    function recover(address token) external onlyOwner {
+        if (token == 0x0000000000000000000000000000000000000000) {
+            payable(msg.sender).call{value: address(this).balance}("");
+        } else {
+            IERC20 Token = IERC20(token);
+            Token.transfer(msg.sender, Token.balanceOf(address(this)));
+        }
     }
 
 }
