@@ -90,7 +90,6 @@ abstract contract Ownable is Context {
 contract LPSplitter is Ownable {
     IRouter public router;
     address public tokenBuying;
-    bool public swapEnabled;
     address public receiver;
     address WPOM = 0xC84D8d03aA41EF941721A4D77b24bB44D7C7Ac55;
 
@@ -103,9 +102,8 @@ contract LPSplitter is Ownable {
     LpList[] public list;
 
     constructor() {
-        router = IRouter(0x5322d6eD110c2990813E8168ae882112E64370Ec );
+        router = IRouter(0x5322d6eD110c2990813E8168ae882112E64370Ec);
         tokenBuying = address(0x8BB07ad76ADdE952e83f2876c9bDeA9cc5B3a51E);
-        swapEnabled = true;
         receiver = 0x000000000000000000000000000000000000dEaD;
     }
 
@@ -210,11 +208,11 @@ contract LPSplitter is Ownable {
     function changeSettings(
         address _tokenBuying,
         address _receiver,
-        bool _swapEnabled
+        address _router
         ) external onlyOwner {
         tokenBuying = _tokenBuying;
         receiver = _receiver;
-        swapEnabled = _swapEnabled;
+        router = IRouter(_router);
     }
 
     function recover(address token) external onlyOwner {
