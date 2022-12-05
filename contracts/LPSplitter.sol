@@ -95,8 +95,6 @@ contract LPSplitter is Ownable {
 
     struct LpList {
         address lpAddress;  // Contract Address of the LP token
-        bool token0fee;     // True = token0 in LP has fee on transfer
-        bool token1fee;     // True = token1 in LP has fee on transfer
     }
 
     LpList[] public list;
@@ -192,11 +190,9 @@ contract LPSplitter is Ownable {
         ); 
     }
 
-    function addLp(address _lpAddress, bool _token0fee, bool _token1fee) external onlyOwner {
+    function addLp(address _lpAddress) external onlyOwner {
         list.push(LpList({
-            lpAddress: _lpAddress,
-            token0fee: _token0fee,
-            token1fee: _token1fee
+            lpAddress: _lpAddress
         }));
     }
 
@@ -205,13 +201,15 @@ contract LPSplitter is Ownable {
         list.pop();
     }
 
-    function changeSettings(
-        address _tokenBuying,
-        address _receiver,
-        address _router
-        ) external onlyOwner {
+    function changeTokenBuying(address _tokenBuying) external onlyOwner {
         tokenBuying = _tokenBuying;
+    }
+
+    function changeReceiver(address _receiver) external onlyOwner {
         receiver = _receiver;
+    }
+
+    function changeRouter(address _router) external onlyOwner {
         router = IRouter(_router);
     }
 
